@@ -1,6 +1,6 @@
 /// <reference path="../types.d.ts" />
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-import { createClient } from "npm:@supabase/supabase-js@2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 type Source = 'jolpica' | 'ergast'
 
@@ -9,10 +9,12 @@ type ApiRace = {
   round: string
   raceName: string
   date: string
+  Results?: ApiResult[]
   Circuit: {
     circuitId: string
     circuitName: string
     Location: {
+      locality?: string
       country: string
     }
   }
@@ -360,6 +362,228 @@ async function importSeason(admin: any, jobId: string, year: number) {
   }
 }
 
+async function importSingleSeasonDetailed(admin: any, seasonYear: number) {
+  const { data: seasonResponse, source } = await fetchWithFallback(`/${seasonYear}/races.json`)
+  const races: ApiRace[] = seasonResponse?.MRData?.RaceTable?.Races || []
+
+  if (!races.length) {
+    throw new Error('No races returned from API')
+  }
+
+  const failedRaceRounds: Array<{ round: number; race: string; reason: string }> = []
+  const driverApiIds = new Set<string>()
+  const teamApiIds = new Set<string>()
+  const circuitApiIds = new Set<string>()
+  let racesImported = 0
+  let resultsInserted = 0
+
+  await admin.from('seasons').upsert({ year: seasonYear }, { onConflict: 'year' })
+
+  for (const race of races) {
+    const round = Number(race.round)
+    const raceName = race.raceName
+
+    try {
+      console.log('Processing race:', raceName)
+
+      const circuitId = race.Circuit.circuitId
+      console.log('Inserting circuit:', circuitId)
+      const { data: circuitRow, error: circuitErr } = await admin
+        .from('circuits')
+        .upsert(
+          {
+            api_circuit_id: circuitId,
+            name: race.Circuit.circuitName,
+            country: race.Circuit.Location.country,
+            image_url: `https://ui-avatars.com/api/?name=${encodeURIComponent(race.Circuit.circuitName)}&background=38383F&color=ffffff&size=1024&bold=true`,
+          },
+          { onConflict: 'api_circuit_id' },
+        )
+        .select('id')
+        .single()
+
+      if (circuitErr || !circuitRow) {
+        console.error('DB error:', circuitErr?.message ?? 'Circuit upsert failed')
+        throw new Error(circuitErr?.message ?? 'Circuit upsert failed')
+      }
+      circuitApiIds.add(circuitId)
+
+      const resultsResp = await fetchWithFallback(`/${seasonYear}/${round}/results.json`)
+      const resultRaces: ApiRace[] = resultsResp.data?.MRData?.RaceTable?.Races || []
+      const raceWithResults = resultRaces[0] ?? null
+      const results: ApiResult[] = raceWithResults?.Results || []
+      console.log('Results count:', results.length)
+
+      if (results.length === 0) {
+        const { error: raceErr } = await admin.from('races').upsert(
+          {
+            api_race_id: `${seasonYear}-${round}`,
+            name: raceName,
+            season_id: seasonYear,
+            circuit_id: circuitRow.id,
+            date: race.date,
+            round,
+            status: 'upcoming',
+          },
+          { onConflict: 'api_race_id' },
+        )
+        if (raceErr) {
+          console.error('DB error:', raceErr.message)
+          throw new Error(raceErr.message)
+        }
+        racesImported += 1
+        continue
+      }
+
+      const teamsPayload = Array.from(
+        new Map(
+          results.map((result) => [
+            result.Constructor.constructorId,
+            {
+              api_constructor_id: result.Constructor.constructorId,
+              name: result.Constructor.name,
+              logo_url: `https://ui-avatars.com/api/?name=${encodeURIComponent(result.Constructor.name)}&background=E10600&color=ffffff&size=256&bold=true`,
+              car_image_url: `https://ui-avatars.com/api/?name=${encodeURIComponent(result.Constructor.name)}+Car&background=15151E&color=ffffff&size=1024&bold=true`,
+            },
+          ]),
+        ).values(),
+      )
+
+      for (const team of teamsPayload) {
+        console.log('Inserting team:', team.api_constructor_id)
+      }
+      const { error: teamErr } = await admin.from('teams').upsert(teamsPayload, { onConflict: 'api_constructor_id' })
+      if (teamErr) {
+        console.error('DB error:', teamErr.message)
+        throw new Error(teamErr.message)
+      }
+      teamsPayload.forEach((team) => teamApiIds.add(team.api_constructor_id))
+
+      const driversPayload = Array.from(
+        new Map(
+          results.map((result) => {
+            const fullName = `${result.Driver.givenName} ${result.Driver.familyName}`.trim()
+            return [
+              result.Driver.driverId,
+              {
+                api_driver_id: result.Driver.driverId,
+                name: fullName,
+                number: result.Driver.permanentNumber || '0',
+                dob: result.Driver.dateOfBirth || null,
+                nationality: result.Driver.nationality || null,
+                image_url: `https://ui-avatars.com/api/?name=${encodeURIComponent(fullName)}&background=0D0D11&color=ffffff&size=512&bold=true`,
+              },
+            ]
+          }),
+        ).values(),
+      )
+
+      for (const driver of driversPayload) {
+        console.log('Inserting driver:', driver.api_driver_id)
+      }
+      const { error: driverErr } = await admin.from('drivers').upsert(driversPayload, { onConflict: 'api_driver_id' })
+      if (driverErr) {
+        console.error('DB error:', driverErr.message)
+        throw new Error(driverErr.message)
+      }
+      driversPayload.forEach((driver) => driverApiIds.add(driver.api_driver_id))
+
+      console.log('Inserting race:', raceName)
+      const { data: raceRow, error: raceErr } = await admin
+        .from('races')
+        .upsert(
+          {
+            api_race_id: `${seasonYear}-${round}`,
+            name: raceName,
+            season_id: seasonYear,
+            circuit_id: circuitRow.id,
+            date: race.date,
+            round,
+            status: 'completed',
+          },
+          { onConflict: 'api_race_id' },
+        )
+        .select('id')
+        .single()
+
+      if (raceErr || !raceRow) {
+        console.error('DB error:', raceErr?.message ?? 'Race upsert failed')
+        throw new Error(raceErr?.message ?? 'Race upsert failed')
+      }
+
+      const { data: teamRows, error: teamRowsErr } = await admin
+        .from('teams')
+        .select('id, api_constructor_id')
+        .in('api_constructor_id', teamsPayload.map((item) => item.api_constructor_id))
+      if (teamRowsErr) {
+        console.error('DB error:', teamRowsErr.message)
+        throw new Error(teamRowsErr.message)
+      }
+
+      const { data: driverRows, error: driverRowsErr } = await admin
+        .from('drivers')
+        .select('id, api_driver_id')
+        .in('api_driver_id', driversPayload.map((item) => item.api_driver_id))
+      if (driverRowsErr) {
+        console.error('DB error:', driverRowsErr.message)
+        throw new Error(driverRowsErr.message)
+      }
+
+      const teamIdMap = new Map((teamRows ?? []).map((row: any) => [row.api_constructor_id, row.id]))
+      const driverIdMap = new Map((driverRows ?? []).map((row: any) => [row.api_driver_id, row.id]))
+
+      const raceResultsPayload = results
+        .map((result) => {
+          const driverId = driverIdMap.get(result.Driver.driverId)
+          const teamId = teamIdMap.get(result.Constructor.constructorId)
+          const position = Number(result.position)
+          if (!driverId || !teamId || !Number.isFinite(position)) return null
+          return {
+            race_id: raceRow.id,
+            driver_id: driverId,
+            team_id: teamId,
+            position,
+            laps: Number(result.laps || 0),
+            time: result.Time?.time || null,
+            status: normalizeResultStatus(result.status),
+          }
+        })
+        .filter((row): row is NonNullable<typeof row> => Boolean(row))
+
+      const { error: resultsErr } = await admin.from('race_results').upsert(raceResultsPayload, { onConflict: 'race_id,driver_id' })
+      if (resultsErr) {
+        console.error('DB error:', resultsErr.message)
+        throw new Error(resultsErr.message)
+      }
+
+      resultsInserted += raceResultsPayload.length
+      racesImported += 1
+    } catch (error) {
+      console.error(`Race ${round} failed:`, error)
+      failedRaceRounds.push({
+        round,
+        race: raceName,
+        reason: error instanceof Error ? error.message : 'Unknown race error',
+      })
+    }
+  }
+
+  await recalcSeason(admin, seasonYear)
+
+  return {
+    success: failedRaceRounds.length === 0,
+    season: seasonYear,
+    source,
+    racesImported,
+    driversImported: driverApiIds.size,
+    teamsImported: teamApiIds.size,
+    circuitsImported: circuitApiIds.size,
+    resultsInserted,
+    failedRaces: failedRaceRounds.length,
+    failedRaceRounds,
+  }
+}
+
 function progress(fromYear: number, toYear: number, currentYear: number) {
   const total = Math.max(1, toYear - fromYear + 1)
   const done = Math.max(0, Math.min(total, currentYear - fromYear))
@@ -374,12 +598,10 @@ Deno.serve(async (req: Request) => {
   try {
     const supabaseUrl =
       Deno.env.get('SUPABASE_URL') ?? Deno.env.get('APP_SUPABASE_URL')
-    const anonKey =
-      Deno.env.get('SUPABASE_ANON_KEY') ?? Deno.env.get('APP_SUPABASE_ANON_KEY')
     const serviceRoleKey =
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? Deno.env.get('APP_SUPABASE_SERVICE_ROLE_KEY')
 
-    if (!supabaseUrl || !anonKey || !serviceRoleKey) {
+    if (!supabaseUrl || !serviceRoleKey) {
       throw new Error('Missing required Supabase function secrets')
     }
 
@@ -391,14 +613,15 @@ Deno.serve(async (req: Request) => {
       })
     }
 
-    const userClient = createClient(supabaseUrl, anonKey, {
-      global: { headers: { Authorization: authHeader } },
+    const admin = createClient(supabaseUrl, serviceRoleKey, {
+      auth: { autoRefreshToken: false, persistSession: false },
     })
 
+    const jwt = authHeader.replace(/^Bearer\s+/i, '')
     const {
       data: { user },
       error: userErr,
-    } = await userClient.auth.getUser()
+    } = await admin.auth.getUser(jwt)
 
     if (userErr || !user) {
       return new Response(JSON.stringify({ ok: false, error: 'Unauthorized' }), {
@@ -407,7 +630,7 @@ Deno.serve(async (req: Request) => {
       })
     }
 
-    const { data: roleRow, error: roleErr } = await userClient
+    const { data: roleRow, error: roleErr } = await admin
       .from('user_roles')
       .select('role')
       .eq('user_id', user.id)
@@ -421,17 +644,30 @@ Deno.serve(async (req: Request) => {
     }
 
     const body = (await req.json().catch(() => ({}))) as {
-      action?: 'start' | 'process' | 'resume'
+      action?: 'start' | 'process' | 'resume' | 'single-season'
       fromYear?: number
       toYear?: number
       jobId?: string
+      seasonYear?: number
     }
 
-    const admin = createClient(supabaseUrl, serviceRoleKey, {
-      auth: { autoRefreshToken: false, persistSession: false },
-    })
-
     const action = body.action ?? 'process'
+
+    if (action === 'single-season') {
+      const year = Number(body.seasonYear)
+      if (!Number.isInteger(year) || year < 1950 || year > new Date().getUTCFullYear()) {
+        return new Response(JSON.stringify({ success: false, error: 'Invalid seasonYear' }), {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        })
+      }
+
+      const summary = await importSingleSeasonDetailed(admin, year)
+      return new Response(JSON.stringify(summary), {
+        status: summary.success ? 200 : 207,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
 
     if (action === 'start') {
       const currentYear = new Date().getUTCFullYear()
