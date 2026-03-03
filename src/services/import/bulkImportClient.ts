@@ -2,9 +2,10 @@ import { supabaseClient } from '../supabaseClient'
 
 export interface ImportJob {
   id: string
-  status: 'queued' | 'running' | 'completed' | 'failed' | 'stopped'
+  status: 'pending' | 'running' | 'completed' | 'failed'
   from_year: number
   to_year: number
+  current_year: number
   current_season: number | null
   progress_percent: number
   processed_seasons: number
@@ -20,6 +21,7 @@ export interface ImportJob {
   logs: string[]
   summary: Record<string, unknown>
   stop_requested: boolean
+  last_error?: string | null
   created_at: string
   started_at: string | null
   finished_at: string | null
@@ -51,25 +53,40 @@ export async function startBulkImport(fromYear = 1950, toYear = new Date().getFu
     body: { action: 'start', fromYear, toYear },
   })
   if (error) await normalizeInvokeError(error)
-  if (!data?.jobId) throw new Error('Failed to create import job')
-  return data as { jobId: string; fromYear: number; toYear: number; message: string; resumeFromJobId?: string | null }
+  if (!data?.job?.id) throw new Error('Failed to create import job')
+  return data as { ok: boolean; job: ImportJob; message: string }
 }
 
-export async function resumeBulkImport(toYear = new Date().getFullYear()) {
+export async function processBulkImport(jobId: string) {
   const { data, error } = await supabaseClient.functions.invoke('bulkImportF1History', {
-    body: { action: 'resume', toYear },
+    body: { action: 'process', jobId },
   })
   if (error) await normalizeInvokeError(error)
-  if (!data?.jobId) throw new Error('Failed to create resumed import job')
-  return data as { jobId: string; fromYear: number; toYear: number; message: string; resumeFromJobId?: string | null }
+  return data as {
+    ok: boolean
+    status: 'running' | 'completed' | 'failed'
+    processedYear?: number
+    nextYear?: number
+    progress?: number
+    error?: string
+    job?: ImportJob
+  }
 }
 
-export async function stopBulkImport(jobId: string) {
+export async function resumeBulkImport(jobId: string) {
   const { data, error } = await supabaseClient.functions.invoke('bulkImportF1History', {
-    body: { action: 'stop', jobId },
+    body: { action: 'resume', jobId },
   })
   if (error) await normalizeInvokeError(error)
-  return data as { ok: boolean; jobId: string; message: string }
+  return data as {
+    ok: boolean
+    status: 'running' | 'completed' | 'failed'
+    processedYear?: number
+    nextYear?: number
+    progress?: number
+    error?: string
+    job?: ImportJob
+  }
 }
 
 export async function getImportJob(jobId: string) {

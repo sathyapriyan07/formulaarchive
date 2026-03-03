@@ -7,32 +7,16 @@ import Badge from '../../components/ui/Badge'
 import {
   getImportJob,
   getLatestImportJob,
+  processBulkImport,
   resumeBulkImport,
   startBulkImport,
-  stopBulkImport,
   type ImportJob,
 } from '../../services/import/bulkImportClient'
 
-const POLL_INTERVAL = 2500
+const STEP_DELAY_MS = 250
 
 function toFriendlyError(error: unknown) {
-  if (typeof error === 'object' && error !== null) {
-    const maybeError = error as {
-      message?: string
-      context?: { status?: number; json?: () => Promise<{ message?: string }> }
-    }
-
-    if (maybeError.context?.status === 404) {
-      return 'Edge Function not deployed (404). Deploy bulkImportF1History in Supabase.'
-    }
-
-    if (maybeError.message?.includes('Failed to send a request to the Edge Function')) {
-      return 'Could not reach Edge Function. Check deploy status, secrets, and project link.'
-    }
-
-    if (maybeError.message) return maybeError.message
-  }
-
+  if (error instanceof Error) return error.message
   return 'Unexpected error'
 }
 
@@ -45,8 +29,9 @@ export default function AdminImport() {
   const [job, setJob] = useState<ImportJob | null>(null)
   const [isStarting, setIsStarting] = useState(false)
   const [isResuming, setIsResuming] = useState(false)
-  const [isStopping, setIsStopping] = useState(false)
-  const pollTimerRef = useRef<number | null>(null)
+  const [isProcessing, setIsProcessing] = useState(false)
+
+  const isProcessingRef = useRef(false)
 
   useEffect(() => {
     if (!loading && !isAdmin) navigate('/')
@@ -54,53 +39,60 @@ export default function AdminImport() {
 
   useEffect(() => {
     if (!isAdmin) return
-
     let ignore = false
-    const hydrateLatest = async () => {
+
+    const hydrate = async () => {
       try {
         const latest = await getLatestImportJob()
-        if (!ignore && latest) {
-          setJob(latest)
-        }
-      } catch (error) {
-        console.error(error)
+        if (!ignore && latest) setJob(latest)
+      } catch {
+        // ignore initial fetch failure
       }
     }
 
-    hydrateLatest()
+    hydrate()
     return () => {
       ignore = true
+      isProcessingRef.current = false
     }
   }, [isAdmin])
-
-  useEffect(() => {
-    if (!job?.id) return
-    if (!['queued', 'running'].includes(job.status)) return
-
-    const tick = async () => {
-      try {
-        const fresh = await getImportJob(job.id)
-        setJob(fresh)
-      } catch (error) {
-        console.error(error)
-      }
-    }
-
-    tick()
-    pollTimerRef.current = window.setInterval(tick, POLL_INTERVAL)
-
-    return () => {
-      if (pollTimerRef.current) {
-        window.clearInterval(pollTimerRef.current)
-      }
-    }
-  }, [job?.id, job?.status])
 
   if (loading) return <div>Loading...</div>
   if (!isAdmin) return null
 
-  const progress = job?.progress_percent ?? 0
-  const isRunning = job?.status === 'running' || job?.status === 'queued'
+  const runProcessingLoop = async (jobId: string, mode: 'process' | 'resume' = 'process') => {
+    if (isProcessingRef.current) return
+    isProcessingRef.current = true
+    setIsProcessing(true)
+
+    try {
+      let action: 'process' | 'resume' = mode
+
+      while (isProcessingRef.current) {
+        const step = action === 'resume' ? await resumeBulkImport(jobId) : await processBulkImport(jobId)
+        action = 'process'
+
+        const fresh = await getImportJob(jobId)
+        setJob(fresh)
+
+        if (!step.ok || step.status === 'failed') {
+          throw new Error(step.error || fresh.last_error || 'Import failed')
+        }
+
+        if (step.status === 'completed' || fresh.status === 'completed') {
+          toast.success('Historical import completed')
+          break
+        }
+
+        await new Promise((resolve) => setTimeout(resolve, STEP_DELAY_MS))
+      }
+    } catch (error) {
+      toast.error(toFriendlyError(error))
+    } finally {
+      isProcessingRef.current = false
+      setIsProcessing(false)
+    }
+  }
 
   const handleStart = async () => {
     if (fromYear < 1950 || fromYear > toYear) {
@@ -111,9 +103,9 @@ export default function AdminImport() {
     setIsStarting(true)
     try {
       const response = await startBulkImport(fromYear, toYear)
-      const fresh = await getImportJob(response.jobId)
-      setJob(fresh)
-      toast.success(`Bulk import started (${fromYear} -> ${toYear})`)
+      setJob(response.job)
+      toast.success(`Import job created (${fromYear} -> ${toYear})`)
+      await runProcessingLoop(response.job.id, 'process')
     } catch (error) {
       toast.error(toFriendlyError(error))
     } finally {
@@ -121,44 +113,32 @@ export default function AdminImport() {
     }
   }
 
-  const handleStop = async () => {
-    if (!job?.id) return
-
-    setIsStopping(true)
-    try {
-      await stopBulkImport(job.id)
-      toast.success('Stop request sent')
-    } catch (error) {
-      toast.error(toFriendlyError(error))
-    } finally {
-      setIsStopping(false)
-    }
-  }
-
   const handleResume = async () => {
+    if (!job?.id) {
+      toast.error('No import job found to resume')
+      return
+    }
+
     setIsResuming(true)
     try {
-      const response = await resumeBulkImport(toYear)
-      const fresh = await getImportJob(response.jobId)
-      setJob(fresh)
-      toast.success(
-        response.resumeFromJobId
-          ? `Resumed import from ${response.fromYear} (source job: ${response.resumeFromJobId})`
-          : `Resumed import from ${response.fromYear}`,
-      )
-    } catch (error) {
-      toast.error(toFriendlyError(error))
+      await runProcessingLoop(job.id, 'resume')
     } finally {
       setIsResuming(false)
     }
   }
 
+  const progress = useMemo(() => {
+    if (!job) return 0
+    const total = Math.max(1, job.to_year - job.from_year + 1)
+    const done = Math.max(0, Math.min(total, job.current_year - job.from_year))
+    return Number(((done / total) * 100).toFixed(2))
+  }, [job])
+
   const statusTone = useMemo(() => {
     if (!job) return 'neutral'
     if (job.status === 'completed') return 'success'
     if (job.status === 'failed') return 'danger'
-    if (job.status === 'stopped') return 'warning'
-    return 'neutral'
+    return 'warning'
   }, [job])
 
   const logs = (job?.logs ?? []).slice(-40)
@@ -168,13 +148,11 @@ export default function AdminImport() {
       <h1 className="text-3xl font-bold text-f1-red">F1 Historical Data Import</h1>
 
       <Card className="space-y-4">
-        <p className="text-sm text-gray-300">Import all Formula 1 data from 1950 to current season using Jolpica (primary) and Ergast (fallback).</p>
+        <p className="text-sm text-gray-300">Production-safe importer: one season per request, resumable, and progress tracked via import_jobs.</p>
 
         <div className="grid gap-4 md:grid-cols-2">
           <div>
-            <label htmlFor="fromYear" className="mb-1 block text-sm text-gray-300">
-              From Year
-            </label>
+            <label htmlFor="fromYear" className="mb-1 block text-sm text-gray-300">From Year</label>
             <input
               id="fromYear"
               type="number"
@@ -186,9 +164,7 @@ export default function AdminImport() {
             />
           </div>
           <div>
-            <label htmlFor="toYear" className="mb-1 block text-sm text-gray-300">
-              To Year
-            </label>
+            <label htmlFor="toYear" className="mb-1 block text-sm text-gray-300">To Year</label>
             <input
               id="toYear"
               type="number"
@@ -202,14 +178,11 @@ export default function AdminImport() {
         </div>
 
         <div className="flex flex-wrap gap-3">
-          <button type="button" className="btn-primary" disabled={isStarting || isRunning} onClick={handleStart}>
-            {isStarting ? 'Starting...' : 'Import 1950 -> Current'}
+          <button type="button" className="btn-primary" disabled={isStarting || isProcessing} onClick={handleStart}>
+            {isStarting || isProcessing ? 'Processing...' : 'Import 1950 -> Current'}
           </button>
-          <button type="button" className="btn-secondary" disabled={isRunning || isResuming} onClick={handleResume}>
-            {isResuming ? 'Resuming...' : 'Resume Last Failed/Stopped'}
-          </button>
-          <button type="button" className="btn-secondary" disabled={!isRunning || isStopping} onClick={handleStop}>
-            {isStopping ? 'Stopping...' : 'Stop Import'}
+          <button type="button" className="btn-secondary" disabled={!job || isResuming || isProcessing} onClick={handleResume}>
+            {isResuming ? 'Resuming...' : 'Resume Import'}
           </button>
         </div>
       </Card>
@@ -227,8 +200,7 @@ export default function AdminImport() {
               <div className="h-full bg-f1-red transition-all" style={{ width: `${progress}%` }} />
             </div>
             <p className="text-xs text-gray-400">
-              {job.processed_seasons}/{job.total_seasons} seasons processed ({progress.toFixed(2)}%)
-              {job.current_season ? ` | Current season: ${job.current_season}` : ''}
+              Year {job.current_year} in range {job.from_year} {'->'} {job.to_year} ({progress.toFixed(2)}%)
             </p>
           </div>
 
@@ -241,7 +213,7 @@ export default function AdminImport() {
             <p>Results: {job.results_imported}</p>
           </div>
 
-          {job.error_message ? <p className="text-sm text-red-300">{job.error_message}</p> : null}
+          {job.last_error || job.error_message ? <p className="text-sm text-red-300">{job.last_error || job.error_message}</p> : null}
 
           <div>
             <h3 className="mb-2 text-sm font-semibold text-gray-200">Live Log</h3>
