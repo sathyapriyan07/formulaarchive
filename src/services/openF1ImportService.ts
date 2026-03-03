@@ -70,6 +70,48 @@ function fallbackPerson(name: string) {
   return `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=0D0D11&color=ffffff&size=512&bold=true`
 }
 
+function isMissingOnConflictConstraint(error: unknown) {
+  const message =
+    error && typeof error === 'object' && 'message' in error
+      ? String((error as { message?: unknown }).message ?? '')
+      : ''
+  return message.toLowerCase().includes('no unique or exclusion constraint matching the on conflict specification')
+}
+
+async function upsertByLookup(
+  table: 'circuits' | 'teams' | 'drivers' | 'races',
+  lookupColumn: string,
+  lookupValue: string | number,
+  payload: Record<string, unknown>,
+) {
+  const { data: existing, error: findErr } = await supabaseClient
+    .from(table)
+    .select('id')
+    .eq(lookupColumn, lookupValue)
+    .maybeSingle()
+
+  if (findErr) throw new Error(findErr.message)
+
+  if (existing?.id) {
+    const { data: updated, error: updateErr } = await supabaseClient
+      .from(table)
+      .update(payload)
+      .eq('id', existing.id)
+      .select('id')
+      .maybeSingle()
+    if (updateErr || !updated?.id) throw new Error(updateErr?.message ?? `Failed to update ${table}`)
+    return updated.id as string
+  }
+
+  const { data: inserted, error: insertErr } = await supabaseClient
+    .from(table)
+    .insert(payload)
+    .select('id')
+    .maybeSingle()
+  if (insertErr || !inserted?.id) throw new Error(insertErr?.message ?? `Failed to insert ${table}`)
+  return inserted.id as string
+}
+
 async function fetchOpenF1<T>(path: string): Promise<T[]> {
   const response = await fetch(`https://api.openf1.org/v1/${path}`)
   if (!response.ok) throw new Error(`OpenF1 request failed: ${response.status} for ${path}`)
@@ -122,8 +164,14 @@ async function upsertCircuit(session: OpenF1Session) {
   let error: any = null
 
   ;({ data, error } = await supabaseClient.from('circuits').upsert(payloadA, { onConflict: 'name,country' }).select('id').maybeSingle())
+  if (error && isMissingOnConflictConstraint(error)) {
+    return upsertByLookup('circuits', 'name', name, payloadA)
+  }
   if (error) {
     ;({ data, error } = await supabaseClient.from('circuits').upsert(payloadB, { onConflict: 'name,country' }).select('id').maybeSingle())
+    if (error && isMissingOnConflictConstraint(error)) {
+      return upsertByLookup('circuits', 'name', name, payloadB)
+    }
   }
   if (error || !data?.id) throw new Error(error?.message ?? 'Failed to upsert circuit')
   return data.id as string
@@ -144,8 +192,14 @@ async function upsertTeam(teamName: string) {
   let error: any = null
 
   ;({ data, error } = await supabaseClient.from('teams').upsert(payloadA, { onConflict: 'name' }).select('id').maybeSingle())
+  if (error && isMissingOnConflictConstraint(error)) {
+    return upsertByLookup('teams', 'name', teamName, payloadA)
+  }
   if (error) {
     ;({ data, error } = await supabaseClient.from('teams').upsert(payloadB, { onConflict: 'name' }).select('id').maybeSingle())
+    if (error && isMissingOnConflictConstraint(error)) {
+      return upsertByLookup('teams', 'name', teamName, payloadB)
+    }
   }
   if (error || !data?.id) throw new Error(error?.message ?? `Failed to upsert team ${teamName}`)
   return data.id as string
@@ -178,8 +232,14 @@ async function upsertDriver(driver: OpenF1Driver) {
   let error: any = null
 
   ;({ data, error } = await supabaseClient.from('drivers').upsert(payloadA, { onConflict: 'openf1_driver_number' }).select('id').maybeSingle())
+  if (error && isMissingOnConflictConstraint(error)) {
+    return upsertByLookup('drivers', 'openf1_driver_number', driverNumber, payloadA)
+  }
   if (error) {
     ;({ data, error } = await supabaseClient.from('drivers').upsert(payloadB, { onConflict: 'number' }).select('id').maybeSingle())
+    if (error && isMissingOnConflictConstraint(error)) {
+      return upsertByLookup('drivers', 'number', driverNumber, payloadB)
+    }
   }
   if (error || !data?.id) throw new Error(error?.message ?? `Failed to upsert driver ${displayName}`)
   return data.id as string
@@ -215,8 +275,37 @@ async function upsertRace(params: {
   let error: any = null
 
   ;({ data, error } = await supabaseClient.from('races').upsert(payloadA, { onConflict: 'api_race_id' }).select('id').maybeSingle())
+  if (error && isMissingOnConflictConstraint(error)) {
+    return upsertByLookup('races', 'api_race_id', String(params.sessionKey), payloadA)
+  }
   if (error) {
     ;({ data, error } = await supabaseClient.from('races').upsert(payloadB, { onConflict: 'season_id,round' }).select('id').maybeSingle())
+    if (error && isMissingOnConflictConstraint(error)) {
+      const { data: existing, error: findErr } = await supabaseClient
+        .from('races')
+        .select('id')
+        .eq('season_id', params.seasonId)
+        .eq('round', params.round)
+        .maybeSingle()
+      if (findErr) throw new Error(findErr.message)
+      if (existing?.id) {
+        const { data: updated, error: updateErr } = await supabaseClient
+          .from('races')
+          .update(payloadB)
+          .eq('id', existing.id)
+          .select('id')
+          .maybeSingle()
+        if (updateErr || !updated?.id) throw new Error(updateErr?.message ?? 'Failed to update race')
+        return updated.id as string
+      }
+      const { data: inserted, error: insertErr } = await supabaseClient
+        .from('races')
+        .insert(payloadB)
+        .select('id')
+        .maybeSingle()
+      if (insertErr || !inserted?.id) throw new Error(insertErr?.message ?? 'Failed to insert race')
+      return inserted.id as string
+    }
   }
   if (error || !data?.id) throw new Error(error?.message ?? 'Failed to upsert race')
   return data.id as string
@@ -423,7 +512,26 @@ export async function importSeasonFromOpenF1(
 
       if (raceResultsPayload.length) {
         const { error } = await supabaseClient.from('race_results').upsert(raceResultsPayload, { onConflict: 'race_id,driver_id' })
-        if (error) throw new Error(error.message)
+        if (error && isMissingOnConflictConstraint(error)) {
+          for (const row of raceResultsPayload) {
+            const { data: existing, error: findErr } = await supabaseClient
+              .from('race_results')
+              .select('id')
+              .eq('race_id', row.race_id)
+              .eq('driver_id', row.driver_id)
+              .maybeSingle()
+            if (findErr) throw new Error(findErr.message)
+            if (existing?.id) {
+              const { error: updateErr } = await supabaseClient.from('race_results').update(row).eq('id', existing.id)
+              if (updateErr) throw new Error(updateErr.message)
+            } else {
+              const { error: insertErr } = await supabaseClient.from('race_results').insert(row)
+              if (insertErr) throw new Error(insertErr.message)
+            }
+          }
+        } else if (error) {
+          throw new Error(error.message)
+        }
         resultsInserted += raceResultsPayload.length
       }
 
