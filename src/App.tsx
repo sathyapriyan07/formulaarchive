@@ -26,6 +26,7 @@ const AdminStandingsPage = lazy(() => import('./pages/admin/AdminStandingsPage')
 const AdminRecalculatePage = lazy(() => import('./pages/admin/AdminRecalculatePage'))
 const AdminIntegrityPage = lazy(() => import('./pages/admin/AdminIntegrityPage'))
 const AdminSystemLogsPage = lazy(() => import('./pages/admin/AdminSystemLogsPage'))
+const AdminOpenF1ImportPage = lazy(() => import('./pages/admin/AdminOpenF1ImportPage'))
 
 export default function App() {
   return (
@@ -61,6 +62,7 @@ export default function App() {
                 <Route path="results" element={<AdminEntityPage entityKey="race_results" />} />
                 <Route path="standings" element={<AdminStandingsPage />} />
                 <Route path="assignments" element={<AdminEntityPage entityKey="driver_team_assignments" />} />
+                <Route path="openf1-import" element={<AdminOpenF1ImportPage />} />
                 <Route path="recalculate" element={<AdminRecalculatePage />} />
                 <Route path="integrity" element={<AdminIntegrityPage />} />
                 <Route path="logs" element={<AdminSystemLogsPage />} />
