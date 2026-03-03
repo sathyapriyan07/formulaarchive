@@ -12,8 +12,6 @@ const navItems = [
   { label: 'Manage Results', to: '/admin/results' },
   { label: 'Manage Standings', to: '/admin/standings' },
   { label: 'Driver-Team Assignments', to: '/admin/assignments' },
-  { label: 'API Import (Single Season)', to: '/admin/import-single' },
-  { label: 'Historical Bulk Import', to: '/admin/import' },
   { label: 'Recalculate Standings', to: '/admin/recalculate' },
   { label: 'Integrity Check', to: '/admin/integrity' },
   { label: 'System Logs', to: '/admin/logs' },

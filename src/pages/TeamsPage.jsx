@@ -15,7 +15,8 @@ export default function TeamsPage() {
     const { data } = await supabase
       .from('teams')
       .select('*')
-      .order('is_active', { ascending: false })
+      .order('active_to', { ascending: false, nullsFirst: true })
+      .order('active_from', { ascending: false, nullsFirst: true })
       .order('name', { ascending: true })
     setTeams(data || [])
     setLoading(false)
@@ -33,9 +34,10 @@ export default function TeamsPage() {
               <img src={team.logo_url} alt={team.name} className="max-h-full max-w-full object-contain" />
             </div>
             <h2 className="text-xl font-bold text-center mb-2">{team.name}</h2>
-            {team.is_active && (
-              <span className="block text-center text-sm text-green-500">Active</span>
-            )}
+            <p className="text-center text-sm text-gray-400">{team.nationality || 'Nationality N/A'}</p>
+            <span className="block text-center text-xs text-gray-500 mt-1">
+              {team.active_from || '-'} - {team.active_to || 'Present'}
+            </span>
           </Link>
         ))}
       </div>

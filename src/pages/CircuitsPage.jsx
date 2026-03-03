@@ -28,9 +28,9 @@ export default function CircuitsPage() {
       <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
         {circuits.map(circuit => (
           <Link key={circuit.id} to={`/circuits/${circuit.id}`} className="card hover:scale-105 transition-transform">
-            <img src={circuit.image_url} alt={circuit.name} className="w-full h-48 object-cover rounded-lg mb-4" />
+            <img src={circuit.layout_image_url} alt={circuit.name} className="w-full h-48 object-cover rounded-lg mb-4" />
             <h2 className="text-xl font-bold mb-2">{circuit.name}</h2>
-            <p className="text-gray-400">{circuit.country}</p>
+            <p className="text-gray-400">{circuit.locality ? `${circuit.locality}, ${circuit.country}` : circuit.country}</p>
             <p className="text-sm text-gray-500">First race: {circuit.first_race_year}</p>
           </Link>
         ))}

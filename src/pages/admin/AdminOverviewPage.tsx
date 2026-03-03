@@ -11,7 +11,6 @@ const TABLES = [
   'race_results',
   'driver_season_stats',
   'team_season_stats',
-  'import_jobs',
 ]
 
 export default function AdminOverviewPage() {

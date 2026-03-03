@@ -13,7 +13,6 @@ const DriversPage = lazy(() => import('./pages/DriversPage'))
 const DriverDetailPage = lazy(() => import('./pages/DriverDetailPage'))
 const CircuitsPage = lazy(() => import('./pages/CircuitsPage'))
 const CircuitDetailPage = lazy(() => import('./pages/CircuitDetailPage'))
-const RacesPage = lazy(() => import('./pages/RacesPage'))
 const RaceDetailPage = lazy(() => import('./pages/RaceDetailPage'))
 const ResultDetailPage = lazy(() => import('./pages/ResultDetailPage'))
 const LoginPage = lazy(() => import('./pages/LoginPage'))
@@ -25,8 +24,6 @@ const AdminOverviewPage = lazy(() => import('./pages/admin/AdminOverviewPage'))
 const AdminEntityPage = lazy(() => import('./pages/admin/AdminEntityPage'))
 const AdminStandingsPage = lazy(() => import('./pages/admin/AdminStandingsPage'))
 const AdminRecalculatePage = lazy(() => import('./pages/admin/AdminRecalculatePage'))
-const AdminSingleImportPage = lazy(() => import('./pages/admin/AdminSingleImportPage'))
-const AdminImport = lazy(() => import('./pages/admin/AdminImport'))
 const AdminIntegrityPage = lazy(() => import('./pages/admin/AdminIntegrityPage'))
 const AdminSystemLogsPage = lazy(() => import('./pages/admin/AdminSystemLogsPage'))
 
@@ -46,9 +43,10 @@ export default function App() {
               <Route path="drivers/:id" element={<DriverDetailPage />} />
               <Route path="circuits" element={<CircuitsPage />} />
               <Route path="circuits/:id" element={<CircuitDetailPage />} />
-              <Route path="races" element={<RacesPage />} />
               <Route path="races/:id" element={<RaceDetailPage />} />
               <Route path="results/:id" element={<ResultDetailPage />} />
+              <Route path="seasons/:year/races/:id" element={<RaceDetailPage />} />
+              <Route path="seasons/:year/races/:id/results" element={<ResultDetailPage />} />
               <Route path="login" element={<LoginPage />} />
               <Route path="signup" element={<SignupPage />} />
               <Route path="profile" element={<ProfilePage />} />
@@ -63,8 +61,6 @@ export default function App() {
                 <Route path="results" element={<AdminEntityPage entityKey="race_results" />} />
                 <Route path="standings" element={<AdminStandingsPage />} />
                 <Route path="assignments" element={<AdminEntityPage entityKey="driver_team_assignments" />} />
-                <Route path="import-single" element={<AdminSingleImportPage />} />
-                <Route path="import" element={<AdminImport />} />
                 <Route path="recalculate" element={<AdminRecalculatePage />} />
                 <Route path="integrity" element={<AdminIntegrityPage />} />
                 <Route path="logs" element={<AdminSystemLogsPage />} />

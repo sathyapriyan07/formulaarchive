@@ -15,7 +15,8 @@ export default function DriversPage() {
     const { data } = await supabase
       .from('drivers')
       .select('*')
-      .order('name', { ascending: true })
+      .order('last_name', { ascending: true })
+      .order('first_name', { ascending: true })
     setDrivers(data || [])
     setLoading(false)
   }
@@ -29,8 +30,8 @@ export default function DriversPage() {
         {drivers.map(driver => (
           <Link key={driver.id} to={`/drivers/${driver.id}`} className="card hover:scale-105 transition-transform">
             <img src={driver.image_url} alt={driver.name} className="w-full h-48 object-cover rounded-lg mb-4" />
-            <h2 className="text-xl font-bold">{driver.name}</h2>
-            <p className="text-gray-400">#{driver.number}</p>
+            <h2 className="text-xl font-bold">{driver.name || `${driver.first_name ?? ''} ${driver.last_name ?? ''}`.trim()}</h2>
+            <p className="text-gray-400">#{driver.permanent_number || driver.number}</p>
           </Link>
         ))}
       </div>

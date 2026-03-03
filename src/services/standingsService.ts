@@ -1,27 +1,9 @@
-import { supabaseClient } from '../supabaseClient'
+import { supabaseClient } from './supabaseClient'
 
-const FIA_POINTS: Record<number, number> = {
-  1: 25,
-  2: 18,
-  3: 15,
-  4: 12,
-  5: 10,
-  6: 8,
-  7: 6,
-  8: 4,
-  9: 2,
-  10: 1,
-}
-
-function pointsFor(position: number, status: string) {
-  if (status !== 'Finished') return 0
-  return FIA_POINTS[position] ?? 0
-}
-
-export async function recalculateSeasonStandings(seasonYear: number) {
+export async function recalculateSeason(seasonYear: number) {
   const { data: rows, error } = await supabaseClient
     .from('race_results')
-    .select('driver_id, team_id, position, status, races!inner(season_id, status)')
+    .select('driver_id, team_id, position, points, status, races!inner(season_id, status)')
     .eq('races.season_id', seasonYear)
     .eq('races.status', 'completed')
 
@@ -31,7 +13,7 @@ export async function recalculateSeasonStandings(seasonYear: number) {
     string,
     { driver_id: string; team_id: string; wins: number; podiums: number; poles: number; dnfs: number; points: number }
   >()
-  const teamMap = new Map<string, { team_id: string; points: number }>()
+  const teamMap = new Map<string, { team_id: string; wins: number; podiums: number; points: number }>()
 
   for (const row of rows ?? []) {
     const key = row.driver_id as string
@@ -46,19 +28,21 @@ export async function recalculateSeasonStandings(seasonYear: number) {
     }
 
     existing.team_id = row.team_id as string
-    if (row.status === 'Finished' && Number(row.position) === 1) existing.wins += 1
-    if (row.status === 'Finished' && Number(row.position) <= 3) existing.podiums += 1
-    if (row.status === 'DNF') existing.dnfs += 1
-    existing.points += pointsFor(Number(row.position), row.status as string)
+    if (Number(row.position) === 1) existing.wins += 1
+    if (Number(row.position) <= 3) existing.podiums += 1
+    if (row.status !== 'Finished') existing.dnfs += 1
+    existing.points += Number((row as { points?: number }).points ?? 0)
     driverMap.set(key, existing)
 
-    const teamExisting = teamMap.get(row.team_id as string) ?? { team_id: row.team_id as string, points: 0 }
-    teamExisting.points += pointsFor(Number(row.position), row.status as string)
+    const teamExisting = teamMap.get(row.team_id as string) ?? { team_id: row.team_id as string, points: 0, wins: 0, podiums: 0 }
+    teamExisting.points += Number((row as { points?: number }).points ?? 0)
+    if (Number(row.position) === 1) teamExisting.wins += 1
+    if (Number(row.position) <= 3) teamExisting.podiums += 1
     teamMap.set(row.team_id as string, teamExisting)
   }
 
-  const driverRows = [...driverMap.values()].sort((a, b) => b.points - a.points || b.wins - a.wins || b.podiums - a.podiums)
-  const teamRows = [...teamMap.values()].sort((a, b) => b.points - a.points)
+  const driverRows = [...driverMap.values()].sort((a, b) => b.points - a.points || b.wins - a.wins)
+  const teamRows = [...teamMap.values()].sort((a, b) => b.points - a.points || b.wins - a.wins)
 
   const driverPayload = driverRows.map((row, idx) => ({
     season_id: seasonYear,
@@ -75,6 +59,8 @@ export async function recalculateSeasonStandings(seasonYear: number) {
   const teamPayload = teamRows.map((row, idx) => ({
     season_id: seasonYear,
     team_id: row.team_id,
+    wins: row.wins,
+    podiums: row.podiums,
     points: row.points,
     position: idx + 1,
   }))

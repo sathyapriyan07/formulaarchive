@@ -25,28 +25,33 @@ export default function DriverDetailPage() {
     setDriver(driverData)
 
     const currentYear = new Date().getFullYear()
+    const { data: currentSeason } = await supabase.from('seasons').select('id').eq('year', currentYear).maybeSingle()
 
-    const { data: current } = await supabase
-      .from('driver_season_stats')
-      .select('*, teams(*)')
-      .eq('driver_id', id)
-      .eq('season_id', currentYear)
-      .single()
+    let current = null
+    if (currentSeason?.id) {
+      const { data } = await supabase
+        .from('driver_season_stats')
+        .select('*, teams(*)')
+        .eq('driver_id', id)
+        .eq('season_id', currentSeason.id)
+        .maybeSingle()
+      current = data
+    }
 
     setCurrentTeam(current?.teams)
 
-    const { data: past } = await supabase
+    const pastQuery = supabase
       .from('driver_season_stats')
       .select('team_id, teams(*)')
       .eq('driver_id', id)
-      .neq('season_id', currentYear)
+    const { data: past } = currentSeason?.id ? await pastQuery.neq('season_id', currentSeason.id) : await pastQuery
 
     const uniquePast = [...new Map(past?.map(item => [item.team_id, item.teams]) || []).values()]
     setPastTeams(uniquePast)
 
     const { data: stats } = await supabase
       .from('driver_season_stats')
-      .select('*, teams(*)')
+      .select('*, teams(*), seasons(year)')
       .eq('driver_id', id)
       .order('season_id', { ascending: false })
 
@@ -57,12 +62,13 @@ export default function DriverDetailPage() {
   if (loading) return <LoadingSkeleton count={3} className="h-64 mb-4" />
 
   const totalStats = seasonStats.reduce((acc, stat) => ({
-    championships: acc.championships + (stat.position === 1 ? 1 : 0),
+    championships: acc.championships + (stat.seasons && stat.position === 1 ? 1 : 0),
+    points: acc.points + Number(stat.points || 0),
     wins: acc.wins + stat.wins,
     podiums: acc.podiums + stat.podiums,
     poles: acc.poles + stat.poles,
     dnfs: acc.dnfs + stat.dnfs
-  }), { championships: 0, wins: 0, podiums: 0, poles: 0, dnfs: 0 })
+  }), { championships: 0, points: 0, wins: 0, podiums: 0, poles: 0, dnfs: 0 })
 
   return (
     <div>
@@ -70,8 +76,8 @@ export default function DriverDetailPage() {
         <div className="grid md:grid-cols-2 gap-8">
           <img src={driver?.image_url} alt={driver?.name} className="w-full h-96 object-cover rounded-lg" />
           <div className="flex flex-col justify-center space-y-4">
-            <h1 className="text-4xl font-bold">{driver?.name}</h1>
-            <p className="text-xl text-gray-400">#{driver?.number}</p>
+            <h1 className="text-4xl font-bold">{driver?.name || `${driver?.first_name ?? ''} ${driver?.last_name ?? ''}`.trim()}</h1>
+            <p className="text-xl text-gray-400">#{driver?.permanent_number || driver?.number}</p>
             <p className="text-gray-400">Born: {driver?.dob ? new Date(driver.dob).toLocaleDateString() : 'N/A'}</p>
             
             <div className="grid grid-cols-2 gap-4 mt-4">
@@ -82,6 +88,10 @@ export default function DriverDetailPage() {
               <div className="bg-f1-darker p-4 rounded-lg">
                 <p className="text-gray-400 text-sm">Wins</p>
                 <p className="text-3xl font-bold">{totalStats.wins}</p>
+              </div>
+              <div className="bg-f1-darker p-4 rounded-lg">
+                <p className="text-gray-400 text-sm">Career Points</p>
+                <p className="text-3xl font-bold">{totalStats.points}</p>
               </div>
               <div className="bg-f1-darker p-4 rounded-lg">
                 <p className="text-gray-400 text-sm">Podiums</p>
@@ -143,7 +153,7 @@ export default function DriverDetailPage() {
               {seasonStats.map(stat => (
                 <tr key={stat.id} className="border-b border-f1-gray hover:bg-f1-darker">
                   <td className="p-2">
-                    <Link to={`/seasons/${stat.season_id}`} className="hover:text-f1-red">{stat.season_id}</Link>
+                    <Link to={`/seasons/${stat.seasons?.year}`} className="hover:text-f1-red">{stat.seasons?.year}</Link>
                   </td>
                   <td className="p-2">
                     <div className="flex items-center space-x-2">

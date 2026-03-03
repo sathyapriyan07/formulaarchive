@@ -16,7 +16,7 @@ export default function ResultDetailPage() {
   const fetchData = async () => {
     const { data: raceData } = await supabase
       .from('races')
-      .select('*, circuits(*)')
+      .select('*, circuits(*), seasons(year)')
       .eq('id', id)
       .single()
 
@@ -41,7 +41,7 @@ export default function ResultDetailPage() {
       <div className="card mb-8">
         <h1 className="text-4xl font-bold mb-2">{race?.name}</h1>
         <p className="text-xl text-gray-400 mb-4">{race?.circuits?.name}</p>
-        <img src={race?.circuits?.image_url} alt={race?.circuits?.name} className="w-full h-64 object-cover rounded-lg" />
+        <img src={race?.circuits?.layout_image_url} alt={race?.circuits?.name} className="w-full h-64 object-cover rounded-lg" />
       </div>
 
       {podium.length > 0 && (
@@ -94,6 +94,7 @@ export default function ResultDetailPage() {
                 <th className="text-left p-2">Driver</th>
                 <th className="text-left p-2">Team</th>
                 <th className="text-right p-2">Laps</th>
+                <th className="text-right p-2">Points</th>
                 <th className="text-right p-2">Time</th>
                 <th className="text-right p-2">Status</th>
               </tr>
@@ -115,6 +116,7 @@ export default function ResultDetailPage() {
                     </Link>
                   </td>
                   <td className="text-right p-2">{result.laps}</td>
+                  <td className="text-right p-2">{result.points ?? 0}</td>
                   <td className="text-right p-2">{result.time || '-'}</td>
                   <td className="text-right p-2">
                     <span className={`px-2 py-1 rounded text-sm ${

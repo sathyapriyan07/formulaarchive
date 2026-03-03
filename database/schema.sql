@@ -13,8 +13,11 @@ CREATE TABLE IF NOT EXISTS public.seasons (
 CREATE TABLE IF NOT EXISTS public.teams (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name TEXT NOT NULL UNIQUE,
+  nationality TEXT,
   logo_url TEXT NOT NULL,
   car_image_url TEXT,
+  active_from INTEGER,
+  active_to INTEGER,
   is_active BOOLEAN NOT NULL DEFAULT true,
   championships INTEGER NOT NULL DEFAULT 0 CHECK (championships >= 0),
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -23,9 +26,12 @@ CREATE TABLE IF NOT EXISTS public.teams (
 
 CREATE TABLE IF NOT EXISTS public.drivers (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  first_name TEXT NOT NULL,
+  last_name TEXT,
   name TEXT NOT NULL,
   image_url TEXT NOT NULL,
   dob DATE,
+  permanent_number TEXT NOT NULL,
   number TEXT NOT NULL,
   nationality TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -38,6 +44,7 @@ CREATE TABLE IF NOT EXISTS public.circuits (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name TEXT NOT NULL,
   country TEXT NOT NULL,
+  locality TEXT,
   length_km NUMERIC(6, 3),
   first_race_year INTEGER CHECK (first_race_year >= 1900 AND first_race_year <= 2100),
   layout_image_url TEXT,
@@ -66,6 +73,7 @@ CREATE TABLE IF NOT EXISTS public.race_results (
   driver_id UUID NOT NULL REFERENCES public.drivers(id) ON DELETE RESTRICT,
   team_id UUID NOT NULL REFERENCES public.teams(id) ON DELETE RESTRICT,
   position INTEGER NOT NULL CHECK (position > 0),
+  points NUMERIC(8, 2) NOT NULL DEFAULT 0,
   laps INTEGER NOT NULL CHECK (laps >= 0),
   time TEXT,
   status TEXT NOT NULL DEFAULT 'Finished' CHECK (status IN ('Finished', 'DNF', 'DSQ', 'DNS')),
@@ -95,6 +103,8 @@ CREATE TABLE IF NOT EXISTS public.team_season_stats (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   season_id UUID NOT NULL REFERENCES public.seasons(id) ON DELETE CASCADE,
   team_id UUID NOT NULL REFERENCES public.teams(id) ON DELETE CASCADE,
+  wins INTEGER NOT NULL DEFAULT 0 CHECK (wins >= 0),
+  podiums INTEGER NOT NULL DEFAULT 0 CHECK (podiums >= 0),
   points NUMERIC(8, 2) NOT NULL DEFAULT 0,
   position INTEGER,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -202,6 +212,24 @@ AS $$
   END;
 $$;
 
+CREATE OR REPLACE FUNCTION public.apply_race_result_points()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  IF NEW.points IS NULL OR NEW.points = 0 THEN
+    NEW.points := public.f1_points_for_position(NEW.position);
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_race_results_apply_points ON public.race_results;
+CREATE TRIGGER trg_race_results_apply_points
+BEFORE INSERT OR UPDATE ON public.race_results
+FOR EACH ROW
+EXECUTE FUNCTION public.apply_race_result_points();
+
 -- Recompute standings for a season whenever results change
 CREATE OR REPLACE FUNCTION public.recompute_standings_for_season(p_season_id UUID)
 RETURNS VOID
@@ -216,10 +244,10 @@ BEGIN
       r.season_id,
       rr.driver_id,
       rr.team_id,
-      SUM(CASE WHEN rr.status = 'Finished' AND rr.position = 1 THEN 1 ELSE 0 END) AS wins,
-      SUM(CASE WHEN rr.status = 'Finished' AND rr.position <= 3 THEN 1 ELSE 0 END) AS podiums,
-      SUM(CASE WHEN rr.status IN ('DNF', 'DNS') THEN 1 ELSE 0 END) AS dnfs,
-      SUM(CASE WHEN rr.status = 'Finished' THEN public.f1_points_for_position(rr.position) ELSE 0 END) AS points
+      SUM(CASE WHEN rr.position = 1 THEN 1 ELSE 0 END) AS wins,
+      SUM(CASE WHEN rr.position <= 3 THEN 1 ELSE 0 END) AS podiums,
+      SUM(CASE WHEN rr.status <> 'Finished' THEN 1 ELSE 0 END) AS dnfs,
+      SUM(rr.points) AS points
     FROM public.race_results rr
     JOIN public.races r ON r.id = rr.race_id
     WHERE r.season_id = p_season_id
@@ -243,12 +271,14 @@ BEGIN
 
   DELETE FROM public.team_season_stats WHERE season_id = p_season_id;
 
-  INSERT INTO public.team_season_stats (season_id, team_id, points, position)
+  INSERT INTO public.team_season_stats (season_id, team_id, wins, podiums, points, position)
   WITH scored AS (
     SELECT
       r.season_id,
       rr.team_id,
-      SUM(CASE WHEN rr.status = 'Finished' THEN public.f1_points_for_position(rr.position) ELSE 0 END) AS points
+      SUM(CASE WHEN rr.position = 1 THEN 1 ELSE 0 END) AS wins,
+      SUM(CASE WHEN rr.position <= 3 THEN 1 ELSE 0 END) AS podiums,
+      SUM(rr.points) AS points
     FROM public.race_results rr
     JOIN public.races r ON r.id = rr.race_id
     WHERE r.season_id = p_season_id
@@ -258,11 +288,13 @@ BEGIN
     SELECT
       season_id,
       team_id,
+      wins,
+      podiums,
       points,
-      ROW_NUMBER() OVER (ORDER BY points DESC, team_id) AS position
+      ROW_NUMBER() OVER (ORDER BY points DESC, wins DESC, team_id) AS position
     FROM scored
   )
-  SELECT season_id, team_id, points, position
+  SELECT season_id, team_id, wins, podiums, points, position
   FROM ranked;
 END;
 $$;

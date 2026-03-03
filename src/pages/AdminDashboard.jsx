@@ -22,7 +22,6 @@ export default function AdminDashboard() {
     { name: 'Circuits', path: '/admin/circuits', icon: 'CIRCUIT' },
     { name: 'Races', path: '/admin/races', icon: 'RACE' },
     { name: 'Results', path: '/admin/results', icon: 'RESULT' },
-    { name: 'Import', path: '/admin/import', icon: 'IMPORT' },
   ]
 
   return (

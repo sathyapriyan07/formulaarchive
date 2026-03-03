@@ -15,7 +15,7 @@ export default function RaceDetailPage() {
   const fetchData = async () => {
     const { data: raceData } = await supabase
       .from('races')
-      .select('*, circuits(*)')
+      .select('*, circuits(*), seasons(year)')
       .eq('id', id)
       .single()
 
@@ -28,7 +28,7 @@ export default function RaceDetailPage() {
   return (
     <div>
       <div className="card mb-8">
-        <img src={race?.circuits?.image_url} alt={race?.circuits?.name} className="w-full h-96 object-cover rounded-lg mb-6" />
+        <img src={race?.circuits?.layout_image_url} alt={race?.circuits?.name} className="w-full h-96 object-cover rounded-lg mb-6" />
         <h1 className="text-4xl font-bold mb-4">{race?.name}</h1>
         <div className="grid md:grid-cols-3 gap-4 mb-6">
           <div>
@@ -50,7 +50,7 @@ export default function RaceDetailPage() {
         </div>
         
         {race?.status === 'completed' && (
-          <Link to={`/results/${race.id}`} className="btn-primary">
+          <Link to={`/seasons/${race?.seasons?.year}/races/${race.id}/results`} className="btn-primary">
             View Results
           </Link>
         )}

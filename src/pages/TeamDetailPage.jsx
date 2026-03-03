@@ -25,27 +25,28 @@ export default function TeamDetailPage() {
     setTeam(teamData)
 
     const currentYear = new Date().getFullYear()
+    const { data: currentSeason } = await supabase.from('seasons').select('id').eq('year', currentYear).maybeSingle()
 
-    const { data: current } = await supabase
+    const currentQuery = supabase
       .from('driver_season_stats')
       .select('*, drivers(*)')
       .eq('team_id', id)
-      .eq('season_id', currentYear)
+    const { data: current } = currentSeason?.id ? await currentQuery.eq('season_id', currentSeason.id) : await currentQuery
 
     setCurrentDrivers(current || [])
 
-    const { data: past } = await supabase
+    const pastQuery = supabase
       .from('driver_season_stats')
       .select('driver_id, drivers(*)')
       .eq('team_id', id)
-      .neq('season_id', currentYear)
+    const { data: past } = currentSeason?.id ? await pastQuery.neq('season_id', currentSeason.id) : await pastQuery
 
     const uniquePast = [...new Map(past?.map(item => [item.driver_id, item]) || []).values()]
     setPastDrivers(uniquePast)
 
     const { data: stats } = await supabase
       .from('team_season_stats')
-      .select('*')
+      .select('*, seasons(year)')
       .eq('team_id', id)
       .order('season_id', { ascending: false })
 
@@ -67,7 +68,9 @@ export default function TeamDetailPage() {
             {team?.car_image_url && (
               <img src={team.car_image_url} alt="Car" className="w-full rounded-lg mb-4" />
             )}
-            <p className="text-xl text-gray-400">Championships: <span className="text-f1-red font-bold">{team?.championships || 0}</span></p>
+            <p className="text-xl text-gray-400">Nationality: <span className="text-white">{team?.nationality || 'N/A'}</span></p>
+            <p className="text-xl text-gray-400">Active Years: <span className="text-white">{team?.active_from || '-'} - {team?.active_to || 'Present'}</span></p>
+            <p className="text-xl text-gray-400">Constructors Championships: <span className="text-f1-red font-bold">{team?.championships || 0}</span></p>
           </div>
         </div>
       </div>
@@ -109,6 +112,8 @@ export default function TeamDetailPage() {
               <tr className="border-b border-f1-gray">
                 <th className="text-left p-2">Season</th>
                 <th className="text-right p-2">Position</th>
+                <th className="text-right p-2">Wins</th>
+                <th className="text-right p-2">Podiums</th>
                 <th className="text-right p-2">Points</th>
               </tr>
             </thead>
@@ -116,9 +121,11 @@ export default function TeamDetailPage() {
               {seasonStats.map(stat => (
                 <tr key={stat.id} className="border-b border-f1-gray hover:bg-f1-darker">
                   <td className="p-2">
-                    <Link to={`/seasons/${stat.season_id}`} className="hover:text-f1-red">{stat.season_id}</Link>
+                    <Link to={`/seasons/${stat.seasons?.year}`} className="hover:text-f1-red">{stat.seasons?.year}</Link>
                   </td>
                   <td className="text-right p-2">{stat.position || '-'}</td>
+                  <td className="text-right p-2">{stat.wins || 0}</td>
+                  <td className="text-right p-2">{stat.podiums || 0}</td>
                   <td className="text-right p-2 font-bold">{stat.points}</td>
                 </tr>
               ))}

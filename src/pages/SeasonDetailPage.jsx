@@ -18,26 +18,41 @@ export default function SeasonDetailPage() {
   }, [year])
 
   const fetchData = async () => {
+    const { data: season } = await supabase
+      .from('seasons')
+      .select('id, year')
+      .eq('year', year)
+      .maybeSingle()
+
+    if (!season) {
+      setDriverStandings([])
+      setTeamStandings([])
+      setRaces([])
+      setDrivers([])
+      setLoading(false)
+      return
+    }
+
     const { data: driverStats } = await supabase
       .from('driver_season_stats')
-      .select('*, drivers(*), teams(*)')
-      .eq('season_id', year)
+      .select('*, drivers(*), teams(*), seasons(year)')
+      .eq('season_id', season.id)
       .order('points', { ascending: false })
 
     setDriverStandings(driverStats || [])
 
     const { data: teamStats } = await supabase
       .from('team_season_stats')
-      .select('*, teams(*)')
-      .eq('season_id', year)
+      .select('*, teams(*), seasons(year)')
+      .eq('season_id', season.id)
       .order('points', { ascending: false })
 
     setTeamStandings(teamStats || [])
 
     const { data: raceData } = await supabase
       .from('races')
-      .select('*, circuits(*)')
-      .eq('season_id', year)
+      .select('*, circuits(*), seasons(year)')
+      .eq('season_id', season.id)
       .order('round', { ascending: true })
 
     setRaces(raceData || [])
@@ -152,7 +167,7 @@ export default function SeasonDetailPage() {
       {activeTab === 'results' && (
         <div className="space-y-4">
           {races.filter(r => r.status === 'completed').map(race => (
-            <Link key={race.id} to={`/results/${race.id}`} className="card block hover:scale-[1.02] transition-transform">
+            <Link key={race.id} to={`/seasons/${year}/races/${race.id}/results`} className="card block hover:scale-[1.02] transition-transform">
               <div className="flex justify-between items-center">
                 <div>
                   <h3 className="text-xl font-bold">{race.name}</h3>
@@ -168,7 +183,7 @@ export default function SeasonDetailPage() {
       {activeTab === 'races' && (
         <div className="space-y-4">
           {races.map(race => (
-            <Link key={race.id} to={`/races/${race.id}`} className="card block hover:scale-[1.02] transition-transform">
+            <Link key={race.id} to={`/seasons/${year}/races/${race.id}`} className="card block hover:scale-[1.02] transition-transform">
               <div className="flex justify-between items-center">
                 <div>
                   <h3 className="text-xl font-bold">{race.name}</h3>

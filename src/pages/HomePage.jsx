@@ -38,34 +38,38 @@ export default function HomePage() {
 
   const fetchData = async () => {
     const currentYear = new Date().getFullYear()
+    const { data: season } = await supabase.from('seasons').select('id, year').eq('year', currentYear).maybeSingle()
+    const seasonId = season?.id
 
-    const { data: races } = await supabase
-      .from('races')
-      .select('*, circuits(*)')
-      .eq('season_id', currentYear)
-      .gte('date', new Date().toISOString())
-      .order('date', { ascending: true })
-      .limit(1)
+    if (seasonId) {
+      const { data: races } = await supabase
+        .from('races')
+        .select('*, circuits(*), seasons(year)')
+        .eq('season_id', seasonId)
+        .gte('date', new Date().toISOString())
+        .order('date', { ascending: true })
+        .limit(1)
 
-    if (races?.[0]) setNextRace(races[0])
+      if (races?.[0]) setNextRace(races[0])
 
-    const { data: drivers } = await supabase
-      .from('driver_season_stats')
-      .select('*, drivers(*), teams(*)')
-      .eq('season_id', currentYear)
-      .order('points', { ascending: false })
-      .limit(5)
+      const { data: drivers } = await supabase
+        .from('driver_season_stats')
+        .select('*, drivers(*), teams(*)')
+        .eq('season_id', seasonId)
+        .order('points', { ascending: false })
+        .limit(5)
 
-    setDriverStandings(drivers || [])
+      setDriverStandings(drivers || [])
 
-    const { data: teams } = await supabase
-      .from('team_season_stats')
-      .select('*, teams(*)')
-      .eq('season_id', currentYear)
-      .order('points', { ascending: false })
-      .limit(5)
+      const { data: teams } = await supabase
+        .from('team_season_stats')
+        .select('*, teams(*)')
+        .eq('season_id', seasonId)
+        .order('points', { ascending: false })
+        .limit(5)
 
-    setTeamStandings(teams || [])
+      setTeamStandings(teams || [])
+    }
     setLoading(false)
   }
 
@@ -78,7 +82,7 @@ export default function HomePage() {
           <h2 className="text-3xl font-bold mb-6 text-f1-red">Next Race</h2>
           <div className="grid md:grid-cols-2 gap-6">
             <img 
-              src={nextRace.circuits?.image_url} 
+              src={nextRace.circuits?.layout_image_url} 
               alt={nextRace.circuits?.name}
               className="w-full h-64 object-cover rounded-lg"
             />
@@ -87,7 +91,7 @@ export default function HomePage() {
               <p className="text-gray-400">{nextRace.circuits?.name}</p>
               <p className="text-lg">{new Date(nextRace.date).toLocaleDateString()}</p>
               <div className="text-3xl font-bold text-f1-red">{countdown}</div>
-              <Link to={`/races/${nextRace.id}`} className="btn-primary w-fit">View Details</Link>
+              <Link to={`/seasons/${nextRace.seasons?.year}/races/${nextRace.id}`} className="btn-primary w-fit">View Details</Link>
             </div>
           </div>
         </section>

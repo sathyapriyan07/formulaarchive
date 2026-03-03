@@ -12,15 +12,15 @@ export default function AdminIntegrityPage() {
   const runCheck = async () => {
     setRunning(true)
     try {
-      const [driversRes, statsRes, racesRes, raceResultsRes, circuitsRes] = await Promise.all([
-        supabaseClient.from('drivers').select('id, api_driver_id'),
+      const [driversRes, statsRes, racesRes, raceResultsRes, seasonsRes] = await Promise.all([
+        supabaseClient.from('drivers').select('id'),
         supabaseClient.from('driver_season_stats').select('driver_id, team_id, season_id'),
         supabaseClient.from('races').select('id, season_id, status, circuit_id'),
         supabaseClient.from('race_results').select('id, race_id, driver_id, team_id'),
-        supabaseClient.from('circuits').select('id, api_circuit_id'),
+        supabaseClient.from('seasons').select('id, year'),
       ])
 
-      if (driversRes.error || statsRes.error || racesRes.error || raceResultsRes.error || circuitsRes.error) {
+      if (driversRes.error || statsRes.error || racesRes.error || raceResultsRes.error || seasonsRes.error) {
         throw new Error('Failed to fetch integrity datasets')
       }
 
@@ -32,20 +32,10 @@ export default function AdminIntegrityPage() {
       const missingTeamRelations = (statsRes.data ?? []).filter((row) => !row.team_id)
       const nullRaceCircuit = (racesRes.data ?? []).filter((row) => !row.circuit_id)
 
-      const duplicateApiDriverIds = (() => {
-        const counts = new Map<string, number>()
-        for (const row of driversRes.data ?? []) {
-          if (!row.api_driver_id) continue
-          counts.set(row.api_driver_id, (counts.get(row.api_driver_id) ?? 0) + 1)
-        }
-        return [...counts.values()].filter((count) => count > 1).length
-      })()
-
-      const duplicateApiCircuitIds = (() => {
-        const counts = new Map<string, number>()
-        for (const row of circuitsRes.data ?? []) {
-          if (!row.api_circuit_id) continue
-          counts.set(row.api_circuit_id, (counts.get(row.api_circuit_id) ?? 0) + 1)
+      const duplicateSeasonYears = (() => {
+        const counts = new Map<number, number>()
+        for (const row of seasonsRes.data ?? []) {
+          counts.set(row.year, (counts.get(row.year) ?? 0) + 1)
         }
         return [...counts.values()].filter((count) => count > 1).length
       })()
@@ -54,8 +44,7 @@ export default function AdminIntegrityPage() {
         { label: 'Orphan drivers', count: orphanDrivers.length, detail: 'Drivers without season stats' },
         { label: 'Missing team relations', count: missingTeamRelations.length, detail: 'Driver season stats missing team mapping' },
         { label: 'Completed races without results', count: completedRaceWithoutResults.length, detail: 'Race marked completed but no result rows' },
-        { label: 'Duplicate api_driver_id groups', count: duplicateApiDriverIds, detail: 'Duplicate API driver IDs found' },
-        { label: 'Duplicate api_circuit_id groups', count: duplicateApiCircuitIds, detail: 'Duplicate API circuit IDs found' },
+        { label: 'Duplicate season year groups', count: duplicateSeasonYears, detail: 'Duplicate season years found' },
         { label: 'Races with null circuit', count: nullRaceCircuit.length, detail: 'Race foreign key missing circuit relation' },
       ]
 

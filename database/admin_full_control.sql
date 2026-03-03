@@ -71,30 +71,3 @@ DROP POLICY IF EXISTS "Admin delete driver_team_assignments" ON public.driver_te
 CREATE POLICY "Admin delete driver_team_assignments"
 ON public.driver_team_assignments FOR DELETE
 USING (public.is_admin());
-
--- Ensure import_jobs RLS is fully admin-controlled if table exists
-DO $$
-BEGIN
-  IF EXISTS (
-    SELECT 1 FROM information_schema.tables
-    WHERE table_schema = 'public' AND table_name = 'import_jobs'
-  ) THEN
-    EXECUTE 'ALTER TABLE public.import_jobs ENABLE ROW LEVEL SECURITY';
-
-    EXECUTE 'DROP POLICY IF EXISTS import_jobs_admin_read ON public.import_jobs';
-    EXECUTE 'CREATE POLICY import_jobs_admin_read ON public.import_jobs FOR SELECT USING (public.is_admin())';
-
-    EXECUTE 'DROP POLICY IF EXISTS import_jobs_admin_insert ON public.import_jobs';
-    EXECUTE ''
-      || 'CREATE POLICY import_jobs_admin_insert ON public.import_jobs FOR INSERT '
-      || 'WITH CHECK (public.is_admin())';
-
-    EXECUTE 'DROP POLICY IF EXISTS import_jobs_admin_update ON public.import_jobs';
-    EXECUTE ''
-      || 'CREATE POLICY import_jobs_admin_update ON public.import_jobs FOR UPDATE '
-      || 'USING (public.is_admin()) WITH CHECK (public.is_admin())';
-
-    EXECUTE 'DROP POLICY IF EXISTS import_jobs_admin_delete ON public.import_jobs';
-    EXECUTE 'CREATE POLICY import_jobs_admin_delete ON public.import_jobs FOR DELETE USING (public.is_admin())';
-  END IF;
-END $$;

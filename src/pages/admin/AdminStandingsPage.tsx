@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { toast } from 'sonner'
 import Card from '../../components/ui/Card'
 import AdminEntityPage from './AdminEntityPage'
-import { recalculateSeason } from '../../services/import/seasonImporter'
+import { recalculateSeason } from '../../services/standingsService'
 import Tabs from '../../components/ui/Tabs'
 
 export default function AdminStandingsPage() {

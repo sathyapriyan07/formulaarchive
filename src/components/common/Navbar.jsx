@@ -17,10 +17,9 @@ export default function Navbar() {
           <Link to="/" className="text-2xl font-bold text-f1-red">F1 Archive</Link>
           
           <div className="hidden md:flex space-x-6">
-            <Link to="/teams" className="hover:text-f1-red transition">Teams</Link>
             <Link to="/seasons" className="hover:text-f1-red transition">Seasons</Link>
+            <Link to="/teams" className="hover:text-f1-red transition">Teams</Link>
             <Link to="/drivers" className="hover:text-f1-red transition">Drivers</Link>
-            <Link to="/races" className="hover:text-f1-red transition">Races</Link>
             <Link to="/circuits" className="hover:text-f1-red transition">Circuits</Link>
           </div>
 
@@ -43,10 +42,9 @@ export default function Navbar() {
         </div>
 
         <div className="md:hidden flex justify-around py-2 border-t border-f1-gray">
-          <Link to="/teams" className="text-sm hover:text-f1-red">Teams</Link>
           <Link to="/seasons" className="text-sm hover:text-f1-red">Seasons</Link>
+          <Link to="/teams" className="text-sm hover:text-f1-red">Teams</Link>
           <Link to="/drivers" className="text-sm hover:text-f1-red">Drivers</Link>
-          <Link to="/races" className="text-sm hover:text-f1-red">Races</Link>
           <Link to="/circuits" className="text-sm hover:text-f1-red">Circuits</Link>
         </div>
       </div>
