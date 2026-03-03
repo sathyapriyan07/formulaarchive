@@ -13,6 +13,7 @@ const navItems = [
   { label: 'Manage Standings', to: '/admin/standings' },
   { label: 'Driver-Team Assignments', to: '/admin/assignments' },
   { label: 'Season Import', to: '/admin/season-import' },
+  { label: 'Modular Imports', to: '/admin/modular-import' },
   { label: 'OpenF1 Season Import', to: '/admin/openf1-import' },
   { label: 'Recalculate Standings', to: '/admin/recalculate' },
   { label: 'Integrity Check', to: '/admin/integrity' },
