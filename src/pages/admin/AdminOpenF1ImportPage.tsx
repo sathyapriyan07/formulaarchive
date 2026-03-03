@@ -4,10 +4,17 @@ import Card from '../../components/ui/Card'
 import { useOpenF1Import } from '../../hooks/useOpenF1Import'
 
 export default function AdminOpenF1ImportPage() {
-  const [seasonYear, setSeasonYear] = useState(new Date().getFullYear())
+  const currentYear = new Date().getFullYear()
+  const minOpenF1Year = 2023
+  const [seasonYear, setSeasonYear] = useState(currentYear)
   const { loading, progress, summary, runImport } = useOpenF1Import()
 
   const handleImport = async () => {
+    if (!Number.isInteger(seasonYear) || seasonYear < minOpenF1Year || seasonYear > currentYear) {
+      toast.error(`Season year must be between ${minOpenF1Year} and ${currentYear}`)
+      return
+    }
+
     try {
       const result = await runImport(seasonYear)
       if (!result) return
@@ -32,8 +39,8 @@ export default function AdminOpenF1ImportPage() {
             <input
               id="seasonYear"
               type="number"
-              min={2018}
-              max={new Date().getFullYear()}
+              min={minOpenF1Year}
+              max={currentYear}
               value={seasonYear}
               onChange={(event) => setSeasonYear(Number(event.target.value))}
               className="rounded border border-f1-gray bg-f1-darker px-3 py-2"

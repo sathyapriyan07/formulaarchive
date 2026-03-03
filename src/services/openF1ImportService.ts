@@ -78,6 +78,14 @@ async function fetchOpenF1<T>(path: string): Promise<T[]> {
   return data as T[]
 }
 
+async function fetchRaceSessions(seasonYear: number): Promise<OpenF1Session[]> {
+  try {
+    return await fetchOpenF1<OpenF1Session>(`sessions?year=${seasonYear}&session_name=Race`)
+  } catch {
+    return await fetchOpenF1<OpenF1Session>(`sessions?year=${seasonYear}&session_type=Race`)
+  }
+}
+
 async function ensureAdminSession() {
   const { data: sessionData } = await supabaseClient.auth.getSession()
   const user = sessionData.session?.user
@@ -297,9 +305,9 @@ export async function importSeasonFromOpenF1(
   await ensureAdminSession()
 
   if (!Number.isInteger(seasonYear)) throw new Error('Invalid season year')
-  if (seasonYear < 2018) throw new Error('OpenF1 reliability is limited before 2018')
+  if (seasonYear < 2023) throw new Error('OpenF1 historical data is available from 2023 onwards')
 
-  const sessions = await fetchOpenF1<OpenF1Session>(`sessions?year=${seasonYear}&session_name=Race`)
+  const sessions = await fetchRaceSessions(seasonYear)
   if (!sessions.length) {
     return {
       success: true,
@@ -346,7 +354,7 @@ export async function importSeasonFromOpenF1(
       if (!session.session_key) throw new Error('Missing session_key')
       const circuitId = await upsertCircuit(session)
 
-      const results = await fetchOpenF1<OpenF1Result>(`results?session_key=${session.session_key}`)
+      const results = await fetchOpenF1<OpenF1Result>(`session_result?session_key=${session.session_key}`)
       if (!results.length) continue
 
       const drivers = await fetchOpenF1<OpenF1Driver>(`drivers?session_key=${session.session_key}`)
