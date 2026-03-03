@@ -113,11 +113,25 @@ async function upsertByLookup(
 }
 
 async function fetchOpenF1<T>(path: string): Promise<T[]> {
-  const response = await fetch(`https://api.openf1.org/v1/${path}`)
-  if (!response.ok) throw new Error(`OpenF1 request failed: ${response.status} for ${path}`)
-  const data = await response.json()
-  if (!Array.isArray(data)) throw new Error(`OpenF1 payload invalid for ${path}`)
-  return data as T[]
+  const maxRetries = 4
+  for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
+    const response = await fetch(`https://api.openf1.org/v1/${path}`)
+    if (response.ok) {
+      const data = await response.json()
+      if (!Array.isArray(data)) throw new Error(`OpenF1 payload invalid for ${path}`)
+      return data as T[]
+    }
+
+    if (response.status === 429 && attempt < maxRetries) {
+      const delayMs = 400 * Math.pow(2, attempt)
+      await new Promise((resolve) => setTimeout(resolve, delayMs))
+      continue
+    }
+
+    throw new Error(`OpenF1 request failed: ${response.status} for ${path}`)
+  }
+
+  throw new Error(`OpenF1 request failed after retries for ${path}`)
 }
 
 async function fetchRaceSessions(seasonYear: number): Promise<OpenF1Session[]> {
@@ -125,6 +139,24 @@ async function fetchRaceSessions(seasonYear: number): Promise<OpenF1Session[]> {
     return await fetchOpenF1<OpenF1Session>(`sessions?year=${seasonYear}&session_name=Race`)
   } catch {
     return await fetchOpenF1<OpenF1Session>(`sessions?year=${seasonYear}&session_type=Race`)
+  }
+}
+
+async function fetchSessionResults(sessionKey: number): Promise<OpenF1Result[]> {
+  try {
+    return await fetchOpenF1<OpenF1Result>(`session_result?session_key=${sessionKey}`)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : ''
+    if (message.includes('404')) {
+      try {
+        return await fetchOpenF1<OpenF1Result>(`results?session_key=${sessionKey}`)
+      } catch (fallbackError) {
+        const fallbackMessage = fallbackError instanceof Error ? fallbackError.message : ''
+        if (fallbackMessage.includes('404')) return []
+        throw fallbackError
+      }
+    }
+    throw error
   }
 }
 
@@ -152,6 +184,7 @@ async function upsertCircuit(session: OpenF1Session) {
     name,
     country,
     locality,
+    image_url: fallbackLogo(name),
     layout_image_url: fallbackLogo(name),
   }
   const payloadB = {
@@ -218,13 +251,11 @@ async function upsertDriver(driver: OpenF1Driver) {
     name: displayName,
     permanent_number: driverNumber,
     number: driverNumber,
-    nationality: driver.nationality || null,
     image_url: fallbackPerson(displayName),
   }
   const payloadB = {
     name: displayName,
     number: driverNumber,
-    nationality: driver.nationality || null,
     image_url: fallbackPerson(displayName),
   }
 
@@ -443,7 +474,7 @@ export async function importSeasonFromOpenF1(
       if (!session.session_key) throw new Error('Missing session_key')
       const circuitId = await upsertCircuit(session)
 
-      const results = await fetchOpenF1<OpenF1Result>(`session_result?session_key=${session.session_key}`)
+      const results = await fetchSessionResults(session.session_key)
       if (!results.length) continue
 
       const drivers = await fetchOpenF1<OpenF1Driver>(`drivers?session_key=${session.session_key}`)
