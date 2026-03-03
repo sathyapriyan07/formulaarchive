@@ -47,11 +47,13 @@ export default function AdminSingleImportPage() {
         {progress ? <p className="text-sm text-gray-300">{progress}</p> : null}
         {summary ? (
           <div className="grid gap-2 text-sm md:grid-cols-2">
-            <p>Races: {summary.racesProcessed}</p>
-            <p>Drivers: {summary.driversUpserted}</p>
-            <p>Teams: {summary.teamsUpserted}</p>
-            <p>Circuits: {summary.circuitsUpserted}</p>
-            <p>Results: {summary.resultsUpserted}</p>
+            <p>Races processed: {summary.racesProcessed}</p>
+            <p>Races imported: {summary.racesImported}</p>
+            <p>Races without results: {summary.racesWithoutResults}</p>
+            <p>Drivers: {summary.driversImported}</p>
+            <p>Teams: {summary.teamsImported}</p>
+            <p>Circuits: {summary.circuitsImported}</p>
+            <p>Results: {summary.resultsInserted}</p>
             <p>Failed races: {summary.failedRaces.length}</p>
           </div>
         ) : null}

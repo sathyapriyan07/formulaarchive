@@ -71,6 +71,14 @@ async function fetchFromSource<T>(baseUrl: string, path: string): Promise<Ergast
   return (await response.json()) as ErgastResponse<T>
 }
 
+function extractRacesFromResponse(data: ErgastResponse<RaceTable>) {
+  const races = data?.MRData?.RaceTable?.Races
+  if (!Array.isArray(races)) {
+    throw new Error('Invalid race payload from API')
+  }
+  return races
+}
+
 export async function fetchWithFallback<T>(path: string): Promise<{ data: ErgastResponse<T>; source: 'jolpica' | 'ergast' }> {
   try {
     const data = await fetchFromSource<T>(JOLPICA_BASE_URL, path)
@@ -82,17 +90,19 @@ export async function fetchWithFallback<T>(path: string): Promise<{ data: Ergast
 }
 
 export async function fetchSeasonRaces(seasonYear: number) {
-  const { data, source } = await fetchWithFallback<RaceTable>(`/${seasonYear}/races.json?limit=100`)
+  const { data, source } = await fetchWithFallback<RaceTable>(`/${seasonYear}/races.json?limit=200`)
+  const races = extractRacesFromResponse(data)
   return {
-    races: data.MRData.RaceTable.Races ?? [],
+    races,
     source,
   }
 }
 
 export async function fetchRaceResults(seasonYear: number, round: number) {
-  const { data, source } = await fetchWithFallback<RaceTable>(`/${seasonYear}/${round}/results.json?limit=100`)
+  const { data, source } = await fetchWithFallback<RaceTable>(`/${seasonYear}/${round}/results.json`)
+  const races = extractRacesFromResponse(data)
   return {
-    race: data.MRData.RaceTable.Races?.[0] ?? null,
+    race: races[0] ?? null,
     source,
   }
 }
