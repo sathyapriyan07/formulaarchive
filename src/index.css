@@ -1,0 +1,33 @@
+@import "tailwindcss";
+
+@theme {
+  --color-f1-red: #E10600;
+  --color-f1-dark: #15151E;
+  --color-f1-darker: #0D0D11;
+  --color-f1-gray: #38383F;
+  --color-f1-light: #F7F4F1;
+}
+
+@layer base {
+  body {
+    background-color: var(--color-f1-darker);
+    color: var(--color-f1-light);
+  }
+}
+
+@layer components {
+  .card {
+    @apply rounded-lg p-6 shadow-lg hover:shadow-xl transition-shadow;
+    background-color: var(--color-f1-dark);
+  }
+  
+  .btn-primary {
+    @apply text-white px-6 py-2 rounded-md hover:bg-red-700 transition-colors;
+    background-color: var(--color-f1-red);
+  }
+  
+  .btn-secondary {
+    @apply text-white px-6 py-2 rounded-md hover:bg-gray-600 transition-colors;
+    background-color: var(--color-f1-gray);
+  }
+}
