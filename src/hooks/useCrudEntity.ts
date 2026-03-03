@@ -21,7 +21,15 @@ export function useCrudEntity<T extends Record<string, unknown>>(table: Paramete
   })
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, payload }: { id: string; payload: Partial<T> }) => updateRow(table, id, payload),
+    mutationFn: ({
+      keyField = 'id',
+      keyValue,
+      payload,
+    }: {
+      keyField?: string
+      keyValue: string | number
+      payload: Partial<T>
+    }) => updateRow(table, keyField, keyValue, payload),
     onSuccess: () => {
       toast.success('Updated successfully')
       queryClient.invalidateQueries({ queryKey: key })
@@ -30,7 +38,8 @@ export function useCrudEntity<T extends Record<string, unknown>>(table: Paramete
   })
 
   const deleteMutation = useMutation({
-    mutationFn: (id: string) => deleteRow(table, id),
+    mutationFn: ({ keyField = 'id', keyValue }: { keyField?: string; keyValue: string | number }) =>
+      deleteRow(table, keyField, keyValue),
     onSuccess: () => {
       toast.success('Deleted successfully')
       queryClient.invalidateQueries({ queryKey: key })

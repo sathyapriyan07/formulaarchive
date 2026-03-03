@@ -19,20 +19,22 @@ const ResultDetailPage = lazy(() => import('./pages/ResultDetailPage'))
 const LoginPage = lazy(() => import('./pages/LoginPage'))
 const SignupPage = lazy(() => import('./pages/SignupPage'))
 const ProfilePage = lazy(() => import('./pages/ProfilePage'))
-const AdminDashboard = lazy(() => import('./pages/AdminDashboard'))
-const AdminSeasons = lazy(() => import('./pages/admin/AdminSeasons'))
-const AdminTeams = lazy(() => import('./pages/admin/AdminTeams'))
-const AdminDrivers = lazy(() => import('./pages/admin/AdminDrivers'))
-const AdminCircuits = lazy(() => import('./pages/admin/AdminCircuits'))
-const AdminRaces = lazy(() => import('./pages/admin/AdminRaces'))
-const AdminResults = lazy(() => import('./pages/admin/AdminResults'))
+
+const AdminShell = lazy(() => import('./pages/admin/AdminShell'))
+const AdminOverviewPage = lazy(() => import('./pages/admin/AdminOverviewPage'))
+const AdminEntityPage = lazy(() => import('./pages/admin/AdminEntityPage'))
+const AdminStandingsPage = lazy(() => import('./pages/admin/AdminStandingsPage'))
+const AdminRecalculatePage = lazy(() => import('./pages/admin/AdminRecalculatePage'))
+const AdminSingleImportPage = lazy(() => import('./pages/admin/AdminSingleImportPage'))
 const AdminImport = lazy(() => import('./pages/admin/AdminImport'))
+const AdminIntegrityPage = lazy(() => import('./pages/admin/AdminIntegrityPage'))
+const AdminSystemLogsPage = lazy(() => import('./pages/admin/AdminSystemLogsPage'))
 
 export default function App() {
   return (
     <AuthProvider>
       <BrowserRouter>
-        <Suspense fallback={<LoadingSkeleton count={3} className="h-32 mb-4" />}>
+        <Suspense fallback={<LoadingSkeleton count={3} className="mb-4 h-32" />}>
           <Routes>
             <Route path="/" element={<MainLayout />}>
               <Route index element={<HomePage />} />
@@ -50,14 +52,23 @@ export default function App() {
               <Route path="login" element={<LoginPage />} />
               <Route path="signup" element={<SignupPage />} />
               <Route path="profile" element={<ProfilePage />} />
-              <Route path="admin" element={<AdminDashboard />} />
-              <Route path="admin/seasons" element={<AdminSeasons />} />
-              <Route path="admin/teams" element={<AdminTeams />} />
-              <Route path="admin/drivers" element={<AdminDrivers />} />
-              <Route path="admin/circuits" element={<AdminCircuits />} />
-              <Route path="admin/races" element={<AdminRaces />} />
-              <Route path="admin/results" element={<AdminResults />} />
-              <Route path="admin/import" element={<AdminImport />} />
+
+              <Route path="admin" element={<AdminShell />}>
+                <Route index element={<AdminOverviewPage />} />
+                <Route path="seasons" element={<AdminEntityPage entityKey="seasons" />} />
+                <Route path="teams" element={<AdminEntityPage entityKey="teams" />} />
+                <Route path="drivers" element={<AdminEntityPage entityKey="drivers" />} />
+                <Route path="circuits" element={<AdminEntityPage entityKey="circuits" />} />
+                <Route path="races" element={<AdminEntityPage entityKey="races" />} />
+                <Route path="results" element={<AdminEntityPage entityKey="race_results" />} />
+                <Route path="standings" element={<AdminStandingsPage />} />
+                <Route path="assignments" element={<AdminEntityPage entityKey="driver_team_assignments" />} />
+                <Route path="import-single" element={<AdminSingleImportPage />} />
+                <Route path="import" element={<AdminImport />} />
+                <Route path="recalculate" element={<AdminRecalculatePage />} />
+                <Route path="integrity" element={<AdminIntegrityPage />} />
+                <Route path="logs" element={<AdminSystemLogsPage />} />
+              </Route>
             </Route>
           </Routes>
         </Suspense>

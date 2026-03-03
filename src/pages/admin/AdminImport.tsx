@@ -15,6 +15,27 @@ import {
 
 const POLL_INTERVAL = 2500
 
+function toFriendlyError(error: unknown) {
+  if (typeof error === 'object' && error !== null) {
+    const maybeError = error as {
+      message?: string
+      context?: { status?: number; json?: () => Promise<{ message?: string }> }
+    }
+
+    if (maybeError.context?.status === 404) {
+      return 'Edge Function not deployed (404). Deploy bulkImportF1History in Supabase.'
+    }
+
+    if (maybeError.message?.includes('Failed to send a request to the Edge Function')) {
+      return 'Could not reach Edge Function. Check deploy status, secrets, and project link.'
+    }
+
+    if (maybeError.message) return maybeError.message
+  }
+
+  return 'Unexpected error'
+}
+
 export default function AdminImport() {
   const { isAdmin, loading } = useAuth() as { isAdmin: boolean; loading: boolean }
   const navigate = useNavigate()
@@ -94,7 +115,7 @@ export default function AdminImport() {
       setJob(fresh)
       toast.success(`Bulk import started (${fromYear} -> ${toYear})`)
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to start import')
+      toast.error(toFriendlyError(error))
     } finally {
       setIsStarting(false)
     }
@@ -108,7 +129,7 @@ export default function AdminImport() {
       await stopBulkImport(job.id)
       toast.success('Stop request sent')
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to stop import')
+      toast.error(toFriendlyError(error))
     } finally {
       setIsStopping(false)
     }
@@ -126,7 +147,7 @@ export default function AdminImport() {
           : `Resumed import from ${response.fromYear}`,
       )
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to resume import')
+      toast.error(toFriendlyError(error))
     } finally {
       setIsResuming(false)
     }

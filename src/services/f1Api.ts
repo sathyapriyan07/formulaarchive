@@ -23,14 +23,19 @@ export async function createRow<T extends Record<string, unknown>>(table: Entity
   return data
 }
 
-export async function updateRow<T extends Record<string, unknown>>(table: EntityName, id: string, values: T) {
-  const { data, error } = await supabaseClient.from(table).update(values).eq('id', id).select('*').single()
+export async function updateRow<T extends Record<string, unknown>>(
+  table: EntityName,
+  keyField: string,
+  keyValue: string | number,
+  values: T,
+) {
+  const { data, error } = await supabaseClient.from(table).update(values).eq(keyField, keyValue).select('*').single()
   if (error) throw error
   return data
 }
 
-export async function deleteRow(table: EntityName, id: string) {
-  const { error } = await supabaseClient.from(table).delete().eq('id', id)
+export async function deleteRow(table: EntityName, keyField: string, keyValue: string | number) {
+  const { error } = await supabaseClient.from(table).delete().eq(keyField, keyValue)
   if (error) throw error
 }
 
