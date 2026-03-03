@@ -34,6 +34,11 @@ export async function importSeasonFromApi(
   seasonYear: number,
   onProgress?: (progress: ImportProgress) => void,
 ): Promise<ImportSummary> {
+  const { data: sessionData } = await supabaseClient.auth.getSession()
+  if (!sessionData.session) {
+    throw new Error('User not logged in')
+  }
+
   onProgress?.({
     totalRaces: 1,
     processedRaces: 0,
@@ -41,9 +46,23 @@ export async function importSeasonFromApi(
     source: 'jolpica',
   })
 
-  const { data, error } = await supabaseClient.functions.invoke('bulkImportF1History', {
-    body: { action: 'single-season', seasonYear },
+  let data: any = null
+  let error: any = null
+
+  // Prefer dedicated function name if deployed, fallback to existing bulk function action.
+  const primary = await supabaseClient.functions.invoke('singleSeasonImport', {
+    body: { seasonYear },
   })
+  data = primary.data
+  error = primary.error
+
+  if (error) {
+    const fallback = await supabaseClient.functions.invoke('bulkImportF1History', {
+      body: { action: 'single-season', seasonYear },
+    })
+    data = fallback.data
+    error = fallback.error
+  }
 
   if (error) {
     throw new Error(error.message || 'Single season import failed')
