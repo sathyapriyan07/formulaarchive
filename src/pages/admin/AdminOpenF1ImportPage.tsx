@@ -1,47 +1,23 @@
 import { useState } from 'react'
 import { toast } from 'sonner'
 import Card from '../../components/ui/Card'
-import { supabaseClient } from '../../services/supabaseClient'
-
-type ImportSummary = {
-  success: boolean
-  seasonYear: number
-  racesImported: number
-  driversImported: number
-  teamsImported: number
-  resultsInserted: number
-  failedSessions: Array<{ session_key: number; reason: string }>
-  error?: string
-}
+import { useOpenF1Import } from '../../hooks/useOpenF1Import'
 
 export default function AdminOpenF1ImportPage() {
   const [seasonYear, setSeasonYear] = useState(new Date().getFullYear())
-  const [loading, setLoading] = useState(false)
-  const [summary, setSummary] = useState<ImportSummary | null>(null)
+  const { loading, progress, summary, runImport } = useOpenF1Import()
 
   const handleImport = async () => {
-    setLoading(true)
-    setSummary(null)
     try {
-      const { data: sessionData } = await supabaseClient.auth.getSession()
-      if (!sessionData.session) throw new Error('User not logged in')
-
-      const { data, error } = await supabaseClient.functions.invoke('importSeasonOpenF1', {
-        body: { seasonYear },
-      })
-
-      if (error) throw new Error(error.message || 'Edge function invoke failed')
-      setSummary(data as ImportSummary)
-
-      if ((data as ImportSummary).success) {
+      const result = await runImport(seasonYear)
+      if (!result) return
+      if (result.success) {
         toast.success(`OpenF1 season ${seasonYear} import completed`)
       } else {
-        toast.error((data as ImportSummary).error || 'OpenF1 import completed with issues')
+        toast.error('OpenF1 import completed with issues')
       }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'OpenF1 import failed')
-    } finally {
-      setLoading(false)
     }
   }
 
@@ -67,6 +43,12 @@ export default function AdminOpenF1ImportPage() {
             {loading ? 'Importing...' : 'Import Season (OpenF1)'}
           </button>
         </div>
+        {progress ? (
+          <p className="text-xs text-gray-400">
+            {progress.processedSessions}/{progress.totalSessions} sessions processed
+            {progress.currentSessionKey ? ` (session ${progress.currentSessionKey})` : ''} - {progress.message}
+          </p>
+        ) : null}
       </Card>
 
       {summary ? (
